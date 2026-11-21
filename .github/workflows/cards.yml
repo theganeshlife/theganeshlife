@@ -1,0 +1,48 @@
+name: theganeshlife
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: cards
+  cancel-in-progress: false
+
+jobs:
+  cards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Build cards
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/cards.py
+
+      - name: Publish
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git -c user.name="Ganesh Acharya" -c user.email="292970586+theganeshlife@users.noreply.github.com" \
+            commit --amend --no-edit --reset-author
+          git push -f origin HEAD:main
+
+      - name: Remove older runs
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/${{ github.repository }}/actions/runs?per_page=100" --paginate -q '.workflow_runs[].id' \
+            | tail -n +6 | while read id; do
+              [ "$id" = "${{ github.run_id }}" ] || gh api -X DELETE "repos/${{ github.repository }}/actions/runs/$id" >/dev/null || true
+            done
